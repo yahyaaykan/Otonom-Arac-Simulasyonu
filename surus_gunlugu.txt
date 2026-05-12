@@ -1,0 +1,10 @@
+Tur   1 | Skor:      19.78 | Adım:   21 | SÜRE DOLDU
+Tur   1 | Skor:      98.89 | Adım:  101 | SÜRE DOLDU
+Tur   1 | Skor:      19.20 | Adım:   20 | BAŞARILI
+Tur   1 |    20.36 |   21 | BAŞARILI
+Tur   1 |     9.98 |   11 | BAŞARILI
+Tur   1 |    77.02 |   77 | BAŞARILI
+Tur   1 |    64.60 |   64 | BAŞARILI
+Tur   1 |    91.72 |   92 | BAŞARILI
+Tur   1 |   161.35 |  160 | BAŞARILI
+Tur   1 |       121.54 |        120 | BAŞARILI
