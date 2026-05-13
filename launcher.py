@@ -27,7 +27,10 @@ W, H = 780, 580
 
 # ── YARDIMCI ─────────────────────────────────────────────────
 def get_models():
-    return sorted(glob.glob("*.pth"), key=os.path.getmtime, reverse=True)
+    models = sorted(glob.glob("*.pth"), key=os.path.getmtime, reverse=True)
+    best = [m for m in models if m.startswith("best_")]
+    other = [m for m in models if not m.startswith("best_")]
+    return best + other
 
 def model_bilgi(path):
     try:

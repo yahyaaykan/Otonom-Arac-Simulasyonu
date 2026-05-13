@@ -172,11 +172,11 @@ class CarEnv(gym.Env):
         left_free  = obs[-2] > 0.5
         right_free = obs[-1] > 0.5
 
-        # Üç kademeli tehlike bölgesi
-        onunde_tehlike     = lidar_front < 0.25  # ACİL: Burnunun dibinde!
-        onunde_cok_yakin   = lidar_front < 0.45  # Çok yakın takip
-        onunde_trafik_var  = lidar_front < 0.65  # Trafik menzilinde
-        onunde_guvenli_bos = lidar_front > 0.75  # Güvenli uzaklık
+        # Üç kademeli tehlike bölgesi (LIDAR_MAX_DIST = 550px)
+        onunde_tehlike     = lidar_front < 0.15  # < 82px ACİL: Burnunun dibinde!
+        onunde_cok_yakin   = lidar_front < 0.25  # < 137px Çok yakın takip
+        onunde_trafik_var  = lidar_front < 0.50  # < 275px Trafik menzilinde
+        onunde_guvenli_bos = lidar_front > 0.60  # > 330px Güvenli uzaklık
 
         # UI için son aksiyonu kaydet
         if self.action_display_timer <= 0:
@@ -229,9 +229,9 @@ class CarEnv(gym.Env):
             else:
                 # Şerit değiştirmiyor — takip modundayken fırsat değerlendirme
                 if trafik_engeli and left_free:
-                    reward -= 3.0  # Sol açık ama geçmiyor — fırsat kaçıyor!
+                    reward -= 15.0  # Sol açık ama geçmiyor, ağır ceza!
                 elif trafik_engeli and right_free and not left_free:
-                    reward -= 1.5  # Sadece sağ açık, çıkşa yaklaş
+                    reward -= 15.0  # Sağ açık ama geçmiyor, ağır ceza!
                 elif trafik_engeli and not left_free and not right_free:
                     reward += 4.0  # Her iki yan da dolu — sabırla bekliyor (doğru!)
 
@@ -269,7 +269,10 @@ class CarEnv(gym.Env):
         # === TAKİP MODU SÜREKLİ ÖDÜL ===
         # Güvenli takip mesafesinde aynı hızda gitmek: +bonus (her adım)
         if takip_modunda:
-            reward += 3.0    # Takip mesafesi korunuyor — iyi sürücü!
+            if not left_free and not right_free:
+                reward += 3.0    # Kaçacak yer yoksa takip mesafesi koruduğu için ödül
+            else:
+                reward -= 8.0    # Yanı boşken arkaya takılıp kalma cezası!
         # Yan da dolu, arkasında bekliyor: sabır ödülü zaten şerit kısmında verildi
 
 
@@ -326,7 +329,7 @@ class CarEnv(gym.Env):
             npc.update_npc(self.agent.speed, self.npcs + [self.agent])
             npc.y += (scroll_speed - npc.speed)
             if npc.y > self.agent.y and npc.id not in self.passed_npcs:
-                reward += 10.0   # Geçiş ödülü azaltıldı (60->10), amaç yarışmak değil güvenli gitmek
+                reward += 35.0   # Sollama teşviki artırıldı! Geçiş yaptı
                 self.passed_npcs.add(npc.id)
 
         self.npcs = [n for n in self.npcs if n.y < SCREEN_HEIGHT + 400 and n.y > -2000]
