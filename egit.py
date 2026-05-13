@@ -4,7 +4,12 @@ Eğitim launcher — tek tıkla çalıştır.
 Gorsel: render=True -> Pygame penceresi açılır.
          render=False -> sadece terminal çıktısı (hızlı).
 """
-import sys, os
+import sys
+import os
+import glob
+import torch
+import numpy as np
+import pygame
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -15,15 +20,11 @@ from ddqn_agent import (
     EPSILON_BASLANGIC, EPSILON_MIN, EPSILON_AZALMA,
     BUFFER_BOYUTU, BATCH_BOYUTU, HEDEF_AG_GUNCELLEME
 )
-import torch, numpy as np
-import pygame
-import glob
-import os
 
 # ─── AYARLAR ────────────────────────────────────────────────
 # render=True  → Pygame penceresi ile görsel sürüş izle
 # render=False → Görsel yok, ~5-10x daha hızlı eğitim
-RENDER_MOD    = True
+RENDER_MOD    = False   # ⚡ KAPALI = 5-10x hızlı eğitim! Demo için main.py kullan.
 BOLUM_SAYISI  = 600
 KAYIT_ARASI   = 50
 
@@ -49,83 +50,131 @@ def bilgi_satiri():
     print("=" * 60, flush=True)
     print("", flush=True)
 
+def _model_bilgi(dosya):
+    """Model dosyasından boyut ve tarih bilgisi döndürür."""
+    import time as _time
+    try:
+        boyut_mb = os.path.getsize(dosya) / (1024 * 1024)
+        tarih = _time.strftime("%d.%m.%Y %H:%M", _time.localtime(os.path.getmtime(dosya)))
+    except Exception:
+        boyut_mb, tarih = 0.0, "?"
+    return boyut_mb, tarih
+
+
 def secim_menusu():
     pygame.init()
-    screen = pygame.display.set_mode((600, 450))
-    pygame.display.set_caption("AI Otonom Sürüş - Eğitim Launcher")
-    font = pygame.font.SysFont("Arial Black", 20)
-    font_small = pygame.font.SysFont("Consolas", 14)
-    font_tiny = pygame.font.SysFont("Consolas", 12)
-    
-    # Buton tanımları (x, y, w, h)
-    btn_sifir = pygame.Rect(100, 140, 400, 50)
-    btn_devam = pygame.Rect(100, 210, 400, 50)
-    btn_prev  = pygame.Rect(100, 280, 50, 40)
-    btn_next  = pygame.Rect(450, 280, 50, 40)
-    
-    modeller = glob.glob("*.pth")
-    # En yeni dosyalar en üstte olsun
-    modeller.sort(key=os.path.getmtime, reverse=True)
-    
-    secili_index = 0
-    model_var = len(modeller) > 0
-    secim = None
+    screen = pygame.display.set_mode((660, 520))
+    pygame.display.set_caption("Otonom Arac AI - Model Secici")
+
+    font_baslik = pygame.font.SysFont("Impact",      34)
+    font_buton  = pygame.font.SysFont("Arial Black", 16)
+    font_kart   = pygame.font.SysFont("Consolas",    13, bold=True)
+    font_bilgi  = pygame.font.SysFont("Consolas",    11)
+
+    # .pth VE .zip dosyaların hepsini tara — en yeni önce
+    modeller = sorted(
+        glob.glob("*.pth") + glob.glob("*.zip"),
+        key=os.path.getmtime, reverse=True
+    )
+    model_var     = len(modeller) > 0
+    secili_index  = 0
+    secim         = None
     secilen_model = None
-    
+
+    btn_sifir = pygame.Rect(40,  448, 270, 48)
+    btn_devam = pygame.Rect(350, 448, 270, 48)
+    btn_prev  = pygame.Rect(14,  190, 38,  190)
+    btn_next  = pygame.Rect(608, 190, 38,  190)
+
     while secim is None:
-        screen.fill((15, 20, 30))
-        
-        title = font.render("Otonom Sürüş Eğitimi", True, (0, 255, 255))
-        screen.blit(title, (170, 40))
-        
-        info_txt = font_small.render("Modeli egitmek icin bir secenek belirleyin:", True, (200, 200, 200))
-        screen.blit(info_txt, (120, 90))
-        
-        # Sıfırdan Başla
-        pygame.draw.rect(screen, (200, 50, 50), btn_sifir, border_radius=10)
-        t_sifir = font.render("SIFIRDAN BASLA", True, (255, 255, 255))
-        screen.blit(t_sifir, (210, 150))
-        
-        # Devam Et
-        renk_devam = (50, 200, 50) if model_var else (100, 100, 100)
-        pygame.draw.rect(screen, renk_devam, btn_devam, border_radius=10)
-        yazi = "SECILI MODELLE DEVAM ET" if model_var else "Kayitli Model Yok!"
-        t_devam = font.render(yazi, True, (255, 255, 255))
-        screen.blit(t_devam, (160 if model_var else 180, 220))
-        
+        screen.fill((10, 14, 24))
+
+        # Başlık
+        baslik = font_baslik.render("OTONOM ARAC — MODEL SECiCi", True, (0, 220, 255))
+        screen.blit(baslik, baslik.get_rect(center=(330, 36)))
+        pygame.draw.line(screen, (0, 160, 210), (40, 60), (620, 60), 2)
+
+        # Model kartı alanı
+        kart = pygame.Rect(58, 78, 544, 340)
+        pygame.draw.rect(screen, (18, 26, 42), kart, border_radius=14)
+        pygame.draw.rect(screen, (0, 130, 190), kart, 2, border_radius=14)
+
         if model_var:
-            pygame.draw.rect(screen, (80, 80, 100), btn_prev, border_radius=5)
-            pygame.draw.rect(screen, (80, 80, 100), btn_next, border_radius=5)
-            screen.blit(font.render("<", True, (255, 255, 255)), (115, 285))
-            screen.blit(font.render(">", True, (255, 255, 255)), (465, 285))
-            
-            guncel_model = modeller[secili_index]
-            model_txt = font_small.render(f"Model: {guncel_model}", True, (255, 255, 0))
-            text_rect = model_txt.get_rect(center=(300, 300))
-            screen.blit(model_txt, text_rect)
-            
-            detay = font_tiny.render(f"Toplam {len(modeller)} model bulundu. Oklarla degistirin.", True, (150, 150, 150))
-            detay_rect = detay.get_rect(center=(300, 340))
-            screen.blit(detay, detay_rect)
-            
+            model     = modeller[secili_index]
+            boyut_mb, tarih = _model_bilgi(model)
+            uzanti    = "PTH — DDQN (Aktif Format)" if model.endswith(".pth") else "ZIP — Eski / PPO"
+            renk_uzanti = (80, 255, 120) if model.endswith(".pth") else (255, 160, 60)
+
+            # Model adı
+            ad = font_buton.render(model, True, (255, 220, 0))
+            screen.blit(ad, ad.get_rect(center=(330, 112)))
+
+            # Bilgi satırları
+            satirlar = [
+                ("FORMAT",    uzanti,                          renk_uzanti),
+                ("BOYUT",     f"{boyut_mb:.2f} MB",            (200, 210, 230)),
+                ("TARIH",     tarih,                           (200, 210, 230)),
+                ("SIRALAMA",  f"{secili_index+1} / {len(modeller)} model",   (180, 200, 255)),
+            ]
+            for i, (etiket, deger, renk) in enumerate(satirlar):
+                y = 150 + i * 52
+                pygame.draw.rect(screen, (28, 38, 58), pygame.Rect(78, y - 6, 504, 38), border_radius=7)
+                e_surf = font_kart.render(f"{etiket:<11}", True, (100, 160, 255))
+                d_surf = font_kart.render(deger,           True, renk)
+                screen.blit(e_surf, (94,  y + 4))
+                screen.blit(d_surf, (270, y + 4))
+
+            # Klavye ipucu
+            ipucu = font_bilgi.render("< > ok tuslar veya butonla model degistir  |  ENTER: Devam et", True, (70, 100, 140))
+            screen.blit(ipucu, ipucu.get_rect(center=(330, 392)))
+
+            # Ok butonları
+            pygame.draw.rect(screen, (35, 55, 90), btn_prev, border_radius=8)
+            pygame.draw.rect(screen, (35, 55, 90), btn_next, border_radius=8)
+            screen.blit(font_buton.render("<", True, (180, 220, 255)),
+                        font_buton.render("<", True, (0,0,0)).get_rect(center=btn_prev.center))
+            screen.blit(font_buton.render(">", True, (180, 220, 255)),
+                        font_buton.render(">", True, (0,0,0)).get_rect(center=btn_next.center))
+        else:
+            uyari = font_buton.render("Kayitli model bulunamadi!", True, (255, 80, 80))
+            screen.blit(uyari, uyari.get_rect(center=(330, 210)))
+            acik = font_bilgi.render("Egitim bittikten sonra .pth dosyalari burada gorunecek.", True, (120, 120, 140))
+            screen.blit(acik, acik.get_rect(center=(330, 240)))
+
+        # Alt butonlar
+        pygame.draw.rect(screen, (170, 35, 35), btn_sifir, border_radius=10)
+        t1 = font_buton.render("SIFIRDAN BASLA", True, (255, 255, 255))
+        screen.blit(t1, t1.get_rect(center=btn_sifir.center))
+
+        renk_devam = (30, 155, 55) if model_var else (55, 65, 78)
+        pygame.draw.rect(screen, renk_devam, btn_devam, border_radius=10)
+        t2 = font_buton.render("BU MODELLE DEVAM ET" if model_var else "MODEL YOK", True, (255, 255, 255))
+        screen.blit(t2, t2.get_rect(center=btn_devam.center))
+
         pygame.display.flip()
-        
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    if btn_sifir.collidepoint(event.pos):
-                        secim = "SIFIR"
-                    elif btn_devam.collidepoint(event.pos) and model_var:
-                        secim = "DEVAM"
-                        secilen_model = modeller[secili_index]
-                    elif model_var and btn_prev.collidepoint(event.pos):
-                        secili_index = (secili_index - 1) % len(modeller)
-                    elif model_var and btn_next.collidepoint(event.pos):
-                        secili_index = (secili_index + 1) % len(modeller)
-                        
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT  and model_var:
+                    secili_index = (secili_index - 1) % len(modeller)
+                elif event.key == pygame.K_RIGHT and model_var:
+                    secili_index = (secili_index + 1) % len(modeller)
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and model_var:
+                    secim = "DEVAM"; secilen_model = modeller[secili_index]
+                elif event.key == pygame.K_ESCAPE:
+                    secim = "SIFIR"
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if btn_sifir.collidepoint(event.pos):
+                    secim = "SIFIR"
+                elif btn_devam.collidepoint(event.pos) and model_var:
+                    secim = "DEVAM"; secilen_model = modeller[secili_index]
+                elif model_var and btn_prev.collidepoint(event.pos):
+                    secili_index = (secili_index - 1) % len(modeller)
+                elif model_var and btn_next.collidepoint(event.pos):
+                    secili_index = (secili_index + 1) % len(modeller)
+
     pygame.quit()
     return secim == "SIFIR", secilen_model
 
@@ -151,7 +200,7 @@ def main():
         if os.path.exists("ddqn_model.pth"):
             os.remove("ddqn_model.pth")
         print("  [YENI] Sifirdan egitim basliyor.", flush=True)
-        ajan.epsilon = 0.95
+        ajan.epsilon = EPSILON_BASLANGIC  # Sabit 1.0 ile tam keşif modu
         print(f"  Epsilon sifirdan: {ajan.epsilon}", flush=True)
     else:
         if secilen_model and os.path.exists(secilen_model):
@@ -166,63 +215,74 @@ def main():
     bolum_odulleri  = []
     bolum_kayiplari = []
 
-    for bolum in range(1, BOLUM_SAYISI + 1):
-        durum, _ = env.reset()
-        
-        # HUD'a güncel bilgileri aktar
-        if hasattr(env, 'unwrapped'):
-            env.unwrapped.info_episode = bolum
-            env.unwrapped.info_epsilon = ajan.epsilon
+    try:
+        for bolum in range(1, BOLUM_SAYISI + 1):
+            durum, _ = env.reset()
             
-        toplam_odul = 0.0
-        bolum_kayip = []
-        bitti = False
+            # HUD'a güncel bilgileri doğrudan aktar
+            env.info_episode = bolum
+            env.info_epsilon = ajan.epsilon
+                
+            toplam_odul = 0.0
+            bolum_kayip = []
+            bitti = False
 
-        while not bitti:
-            eylem = ajan.eylem_sec(durum)
-            yeni_durum, odul, terminated, truncated, _ = env.step(eylem)
-            bitti = terminated or truncated
+            while not bitti:
+                eylem = ajan.eylem_sec(durum)
+                yeni_durum, odul, terminated, truncated, _ = env.step(eylem)
+                bitti = terminated or truncated
 
-            ajan.deneyim_ekle(durum, eylem, odul, yeni_durum, float(bitti))
-            kayip = ajan.ogren()
-            if kayip is not None:
-                bolum_kayip.append(kayip)
-                if hasattr(env, 'unwrapped'):
-                    env.unwrapped.info_loss = kayip
+                ajan.deneyim_ekle(durum, eylem, odul, yeni_durum, float(bitti))
+                kayip = ajan.ogren()
+                if kayip is not None:
+                    bolum_kayip.append(kayip)
+                    env.info_loss = kayip
 
-            durum = yeni_durum
-            toplam_odul += odul
+                durum = yeni_durum
+                toplam_odul += odul
 
-        bolum_odulleri.append(toplam_odul)
-        ort_kayip = float(np.mean(bolum_kayip)) if bolum_kayip else 0.0
-        bolum_kayiplari.append(ort_kayip)
+            bolum_odulleri.append(toplam_odul)
+            ort_kayip = float(np.mean(bolum_kayip)) if bolum_kayip else 0.0
+            bolum_kayiplari.append(ort_kayip)
 
-        # Her bölümü yaz (flush ile aninda goster)
-        if bolum % 10 == 0:
-            son10 = np.mean(bolum_odulleri[-10:])
-            print(
-                f"  Bolum {bolum:>4}/{BOLUM_SAYISI} | "
-                f"Odul={toplam_odul:>9.1f} | "
-                f"Ort10={son10:>9.1f} | "
-                f"eps={ajan.epsilon:.4f} | "
-                f"Kayip={ort_kayip:.5f}",
-                flush=True
-            )
+            # Her bölümü yaz (flush ile aninda goster)
+            if bolum % 10 == 0:
+                son10 = np.mean(bolum_odulleri[-10:])
+                print(
+                    f"  Bolum {bolum:>4}/{BOLUM_SAYISI} | "
+                    f"Odul={toplam_odul:>9.1f} | "
+                    f"Ort10={son10:>9.1f} | "
+                    f"eps={ajan.epsilon:.4f} | "
+                    f"Kayip={ort_kayip:.5f}",
+                    flush=True
+                )
 
-        # Periyodik kayit + grafik
-        if bolum % KAYIT_ARASI == 0:
-            son10_skor = int(np.mean(bolum_odulleri[-10:])) if len(bolum_odulleri) >= 10 else int(toplam_odul)
-            ozel_isim = f"model_bolum{bolum}_odul{son10_skor}.pth"
-            ajan.kaydet(ozel_isim)
-            # Düz ismi de güncel tut (isteğe bağlı)
-            ajan.kaydet("ddqn_model.pth")
-            _grafik_ciz(bolum_odulleri, bolum_kayiplari, ara=True)
+            # Periyodik kayit + grafik
+            if bolum % KAYIT_ARASI == 0:
+                son10_skor = int(np.mean(bolum_odulleri[-10:])) if len(bolum_odulleri) >= 10 else int(toplam_odul)
+                ozel_isim = f"model_bolum{bolum}_odul{son10_skor}.pth"
+                ajan.kaydet(ozel_isim)
+                # Düz ismi de güncel tut
+                ajan.kaydet("ddqn_model.pth")
+                _grafik_ciz(bolum_odulleri, bolum_kayiplari, ara=True)
 
-    # Egitim sonu
-    ajan.kaydet()
-    _grafik_ciz(bolum_odulleri, bolum_kayiplari, ara=False)
-    env.close()
-    print("\n  [BITTI] Egitim tamamlandi!", flush=True)
+        # Egitim sonu normal kayit
+        ajan.kaydet("ddqn_model.pth")
+        _grafik_ciz(bolum_odulleri, bolum_kayiplari, ara=False)
+        print("\n  [BITTI] Egitim tamamlandi!", flush=True)
+
+    except KeyboardInterrupt:
+        # CTRL+C ILE DURDURULURSA OTOMATIK KAYIT YAP
+        print("\n\n  [UYARI] Terminal durduruldu (CTRL+C)!", flush=True)
+        print("  [KAYIT] O ana kadarki model bilgileri guvenli sekilde kaydediliyor...", flush=True)
+        # Hangi bölümde durdurduğunu isme ekle ki "gir-çık" yaptığın anlaşılsın
+        isim = f"model_manuel_bolum{bolum}.pth"
+        ajan.kaydet(isim)
+        _grafik_ciz(bolum_odulleri, bolum_kayiplari, ara=True)
+        print(f"  [BASARILI] Kayit tamamlandi: {isim}\n", flush=True)
+
+    finally:
+        env.close()
 
 
 def _grafik_ciz(bolum_odulleri, bolum_kayiplari, ara=False):

@@ -36,7 +36,7 @@ GAMMA = 0.99
 #   azalır. Ajan yavaş yavaş öğrendiğini kullanmaya başlar.
 EPSILON_BASLANGIC = 1.0
 EPSILON_MIN       = 0.05
-EPSILON_AZALMA    = 0.9995   # Her adımda çarpılan katsayı
+EPSILON_AZALMA    = 0.997    # Hızlandırıldı: ~600 bölümde 0.05'e iner
 
 # learning_rate: 5e-4 → Adam optimizer için dengeli öğrenme adımı.
 #   Çok büyük → ıraksama; çok küçük → yavaş öğrenme.
@@ -52,11 +52,11 @@ BATCH_BOYUTU = 128
 
 # Hedef ağ her 500 adımda bir güncellenir (hard update).
 #   Sık güncelleme → kararsız eğitim.
-HEDEF_AG_GUNCELLEME = 500
+HEDEF_AG_GUNCELLEME = 300    # Hızlandırıldı: 500 → 300 adım
 
 # Karar frekansı: CarEnv'in step() çağrısı = 1 karar.
 #   Gerçek zamanlı stabilite env tarafından yönetilir.
-TOPLAM_BOLUM = 800
+TOPLAM_BOLUM = 600
 KAYIT_DOSYASI = "ddqn_model.pth"
 
 # ─────────────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ class DDQNAjani:
         if not os.path.exists(dosya):
             print(f"  [UYARI] '{dosya}' bulunamadı, sıfırdan başlanıyor.")
             return
-        kayit = torch.load(dosya, map_location=self.cihaz)
+        kayit = torch.load(dosya, map_location=self.cihaz, weights_only=False)  # PyTorch 2.x uyumlu
         self.cevrimici_ag.load_state_dict(kayit["cevrimici_ag"])
         self.hedef_ag.load_state_dict(kayit["hedef_ag"])
         self.optimizer.load_state_dict(kayit["optimizer"])
